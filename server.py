@@ -44,10 +44,19 @@ class MyWebServer(socketserver.BaseRequestHandler):
                 return: a string of url
         '''
         return self.data.split()[1][1:]
-    
-    def checkPath(self):
+    def getRequestMethod(self):
         '''
-            a method to check the given path 
+            a method to get requested method
+                parameter: None 
+                return: a string of method name
+        '''
+        return self.data.split()[0]
+    
+    def findFilePath(self):
+        '''
+            a method to decide the status code and return the file path
+            parameter: None
+            return: a path to the certain html file. 
         '''
         url =''
         if 'www' not in self.url:
@@ -63,29 +72,32 @@ class MyWebServer(socketserver.BaseRequestHandler):
                 current_path += '/'
                 self.status_code = 301
             current_path +='index.html'
-            'Since we redirect to the index.html, the filetype is html'
-            self.filetype = 'html'
+            self.filetype = 'html'  #Since we redirect to the index.html, the filetype is html
         elif path.isfile(current_path):
             self.status_code = 200
             self.filetype = current_path.split('.')[-1]
         else:
-            'For example, UNIX, Microsoft Windows, and other operating systems use ".." as a '
-            'path component to indicate a directory level above the current one.'
             self.status_code = 404
+        #For example, UNIX, Microsoft Windows, and other operating systems use ".." as a '
+        #path component to indicate a directory level above the current one.'
         if '..' in self.url:
             self.status_code = 404
+        #Check given method if valid or not.
         if self.method in ['POST','DELETE','PUT']:
             self.status_code = 405
         return current_path
-
-    def getRequestMethod(self):
-        return self.data.split()[0]
     def handleStatusCode(self,path_to_file):
+        '''
+            a method to handle cases with different status code 
+                parameter: 
+                    path_to_file, a string of file path
+                return:
+                    a string format of http response
+        '''
         headers = '''{} {}\r\nContent-Type: {};\r\nContent-Length: {}\r\nConnection: Closed\r\n'''
-        content = None
+        content = '''<html>\r\n<head>\r\n<title>{}</title>\r\n</head>\r\n<body>\r\n<h1>{}</h1>\r\n<p>{}</p>\r\n</body>\r\n</html>\r\n''' 
         filetype = 'text/{}'.format(str(self.filetype))
-        if self.status_code == 404:
-            content = '''<html>\r\n<head>\r\n<title>{}</title>\r\n</head>\r\n<body>\r\n<h1>{}</h1>\r\n<p>{}</p>\r\n</body>\r\n</html>\r\n''' 
+        if self.status_code == 404: 
             comment = 'The requested URL .{} was not found on this server.'
             comment = comment.format(self.url)
             content = content.format(str(404)+' NOT FOUND','Not Found',comment)
@@ -93,7 +105,6 @@ class MyWebServer(socketserver.BaseRequestHandler):
             return headers+'\r\n'+content
         
         if self.status_code == 405:
-            content = '''<html>\r\n<head>\r\n<title>{}</title>\r\n</head>\r\n<body>\r\n<h1>{}</h1>\r\n<p>{}</p>\r\n</body>\r\n</html>\r\n''' 
             comment = 'The requested Method {} was NOT Allowed'
             comment = comment.format(self.method)
             content = content.format(str(405)+' Method Not Allowed','Method Not Allowed',comment)
@@ -123,7 +134,7 @@ class MyWebServer(socketserver.BaseRequestHandler):
         self.status_code = 200
         self.filetype = None
         self.request_url = None
-        path_to_file = self.checkPath()
+        path_to_file = self.findFilePath()
         self.repose_content = self.handleStatusCode(path_to_file)
         self.request.sendall(bytearray(str(self.repose_content),'utf-8'))
 
