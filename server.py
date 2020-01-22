@@ -1,5 +1,7 @@
 #  coding: utf-8 
 import socketserver
+from os import path
+from email.utils import formatdate
 
 # Copyright 2013 Abram Hindle, Eddie Antonio Santos
 # 
@@ -28,11 +30,102 @@ import socketserver
 
 
 class MyWebServer(socketserver.BaseRequestHandler):
+    def getHTTPVersion(self):
+        '''
+            a method to get HTTP Version from the user's request
+                parameter: None
+                return: a string of HTTP version
+        '''
+        return self.data.split()[2]
+    def getRequestedURL(self):
+        '''
+            a method to get URL from the user's request
+                parameter: None
+                return: a string of url
+        '''
+        return self.data.split()[1][1:]
+    
+    def checkPath(self):
+        '''
+            a method to check the given path 
+        '''
+        url =''
+        if 'www' not in self.url:
+            url = 'www/'+self.url
+        current_path = path.curdir+'/'+url
+        if path.isdir(current_path):
+            if self.url == '':
+                self.status_code = 200
+            elif self.url[-1] == '/':
+                self.status_code = 200
+            else:
+                self.url += '/'
+                current_path += '/'
+                self.status_code = 301
+            current_path +='index.html'
+            'Since we redirect to the index.html, the filetype is html'
+            self.filetype = 'html'
+        elif path.isfile(current_path):
+            self.status_code = 200
+            self.filetype = current_path.split('.')[-1]
+        else:
+            'For example, UNIX, Microsoft Windows, and other operating systems use ".." as a '
+            'path component to indicate a directory level above the current one.'
+            self.status_code = 404
+        if '..' in self.url:
+            self.status_code = 404
+        if self.method in ['POST','DELETE','PUT']:
+            self.status_code = 405
+        return current_path
+
+    def getRequestMethod(self):
+        return self.data.split()[0]
+    def handleStatusCode(self,path_to_file):
+        headers = '''{} {}\r\nContent-Type: {};\r\nContent-Length: {}\r\nConnection: Closed\r\n'''
+        content = None
+        filetype = 'text/{}'.format(str(self.filetype))
+        if self.status_code == 404:
+            content = '''<html>\r\n<head>\r\n<title>{}</title>\r\n</head>\r\n<body>\r\n<h1>{}</h1>\r\n<p>{}</p>\r\n</body>\r\n</html>\r\n''' 
+            comment = 'The requested URL .{} was not found on this server.'
+            comment = comment.format(self.url)
+            content = content.format(str(404)+' NOT FOUND','Not Found',comment)
+            headers = headers.format(self.version,'404 NOTFOUND',filetype,str(len(content)))
+            return headers+'\r\n'+content
+        
+        if self.status_code == 405:
+            content = '''<html>\r\n<head>\r\n<title>{}</title>\r\n</head>\r\n<body>\r\n<h1>{}</h1>\r\n<p>{}</p>\r\n</body>\r\n</html>\r\n''' 
+            comment = 'The requested Method {} was NOT Allowed'
+            comment = comment.format(self.method)
+            content = content.format(str(405)+' Method Not Allowed','Method Not Allowed',comment)
+            headers = headers.format(self.version,'405 Method Not Allowed',filetype,str(len(content)))
+            return headers+'\r\n'+content
+        
+        if self.status_code == 200:
+            with open(path.curdir+'/'+path_to_file,'r') as f:
+                content = f.read()    
+            headers = headers.format(self.version,'200 OK',filetype,str(len(content)))
+            return headers+'\r\n'+content
+        
+        if self.status_code == 301:
+            with open(path.curdir+'/'+path_to_file,'r') as f:
+                content = f.read()
+            location = 'Location: {}\r\n'.format(self.url)
+            content = content
+            headers = headers.format(self.version,'301 Moved Permanently',filetype,str(len(content)))
+            headers = headers + location
+            return headers+'\r\n'+content
     
     def handle(self):
-        self.data = self.request.recv(1024).strip()
-        print ("Got a request of: %s\n" % self.data)
-        self.request.sendall(bytearray("OK",'utf-8'))
+        self.data = self.request.recv(1024).strip().decode('utf-8')
+        self.method = self.getRequestMethod()
+        self.url = self.getRequestedURL()
+        self.version = self.getHTTPVersion()
+        self.status_code = 200
+        self.filetype = None
+        self.request_url = None
+        path_to_file = self.checkPath()
+        self.repose_content = self.handleStatusCode(path_to_file)
+        self.request.sendall(bytearray(str(self.repose_content),'utf-8'))
 
 if __name__ == "__main__":
     HOST, PORT = "localhost", 8080
@@ -40,6 +133,7 @@ if __name__ == "__main__":
     socketserver.TCPServer.allow_reuse_address = True
     # Create the server, binding to localhost on port 8080
     server = socketserver.TCPServer((HOST, PORT), MyWebServer)
+    
 
     # Activate the server; this will keep running until you
     # interrupt the program with Ctrl-C
